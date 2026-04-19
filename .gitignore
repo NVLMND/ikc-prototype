@@ -1,0 +1,8 @@
+ikc
+a.out
+*.o
+*.out
+*.swp
+*.swo
+*~
+.DS_Store
