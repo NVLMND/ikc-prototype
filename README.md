@@ -39,7 +39,7 @@ this version includes:
 - basic line editing (left/right movement)  
 - fast compile cycle via `tcc` (fallback: `gcc`)
 
-build and run: make && ./ikc
+build and run: ```make && ./ikc```
 
 
 ## note
