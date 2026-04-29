@@ -46,6 +46,53 @@ static int is_global_declaration(const char *line){
            starts_with(line, "const");
 }
 
+static void brace_depth(const char *s, int *depth){
+    int in_string=0;
+    int in_char=0;
+    int in_line_comment=0;
+    int in_multi_comment=0;
+    const char *start=s;
+    for(; *s; s++){
+        if(in_line_comment){
+            if(*s=='\n') in_line_comment=0;
+            continue;
+        }
+        if(in_multi_comment){
+            if(*s=='*' && *(s+1)=='/'){
+                in_multi_comment=0;
+                s++;
+            }
+            continue;
+        }
+        if(!in_string && !in_char){
+            if(*s=='/' && *(s+1)=='/'){
+                in_line_comment=1;
+                s++;
+                continue;
+            }
+            if(*s=='/' && *(s+1)=='*'){
+                in_multi_comment=1;
+                s++;
+                continue;
+            }
+        }
+
+        if(!in_char && *s=='"' && (s==start||s[-1]!='\\')){
+            in_string=!in_string;
+            continue;
+        }
+        if(!in_string && *s=='\'' && (s==start||s[-1]!='\\')){
+            in_char=!in_char;
+            continue;
+        }
+        if(!in_string && !in_char){
+            if(*s=='{') (*depth)++;
+            else if(*s=='}') (*depth)--;
+        }
+    }
+    if(*depth<0) *depth=0;
+}
+
 LineType classify_line(const char *line, ParserState *ps){
     if(!line) return LINE_EMPTY;
     while(isspace((unsigned char)*line)) line++;
@@ -53,29 +100,20 @@ LineType classify_line(const char *line, ParserState *ps){
     if(*line=='\0')
         return LINE_EMPTY;
 
-    if(strcmp(line, "run")==0    ||
-        strcmp(line, "clear")==0 ||
-        strcmp(line, "quit")==0)
+    if(strcmp(line, ":run")==0    ||
+        strcmp(line, ":clear")==0 ||
+        strcmp(line, ":quit")==0)
         return LINE_COMMAND;
 
     if(*line=='#')
         return LINE_GLOBAL;
-
     if(ps->in_function)
         return LINE_GLOBAL;
 
+    if(ps->brace_depth>0)
+        return LINE_MAIN;
+
     if(looks_like_function(line)){
-        if(strchr(line, '{')){
-            ps->in_function=1;
-            return LINE_GLOBAL;
-        }else{
-            ps->pending_function=1;
-            return LINE_GLOBAL;
-        }
-    }
-    if(ps->pending_function && strchr(line, '{')){
-        ps->pending_function=0;
-        ps->in_function=1;
         return LINE_GLOBAL;
     }
     if(is_global_declaration(line))
@@ -85,15 +123,22 @@ LineType classify_line(const char *line, ParserState *ps){
 }
 
 void update_parser_state(const char *line, ParserState *ps){
-    for(const char *p=line; *p; p++) {
-        if(*p=='{') ps->brace_depth++;
-        else if(*p=='}') ps->brace_depth--;
+
+    if(ps->pending_function && strchr(line, '{')){
+        ps->pending_function=0;
+        ps->in_function=1;
     }
 
-    if (ps->brace_depth<0)
-        ps->brace_depth=0;
-
-    if (ps->in_function && ps->brace_depth==0) {
+    if(!ps->in_function && looks_like_function(line)){
+        if(strchr(line, '{')){
+            ps->in_function=1;
+        }else{
+            ps->pending_function=1;
+        }
+    }
+    brace_depth(line, &ps->brace_depth);
+    
+    if (ps->in_function && ps->brace_depth==0){
         ps->in_function=0;
     }
 }

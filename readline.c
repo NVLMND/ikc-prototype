@@ -4,15 +4,17 @@
 #include <unistd.h>
 #include "readline.h"
 #include "colors.h"
+#include"state.h"
+#include"history.h"
 #define CTRL(X) ((X) & 0X1f)
 
-static void redraw_from_cursor(const char *buf, int len, int cursor)
+static void redraw_from_cursor(const char *prompt, const char *buf, int len, int cursor)
 {
     char seq[64];
 
-    write(STDOUT_FILENO, "\r\033[K", 4);    // clear line
-    write(STDOUT_FILENO, ">>> ", 4);      // redraw prompt
-    write(STDOUT_FILENO, buf, len);       // redraw buffer
+    write(STDOUT_FILENO, "\r\033[K", 4);
+    write(STDOUT_FILENO, prompt, strlen(prompt));
+    write(STDOUT_FILENO, buf, len);
 
     int pos = len - cursor;
     if (pos > 0) {
@@ -21,18 +23,17 @@ static void redraw_from_cursor(const char *buf, int len, int cursor)
     }
 }
 
-int ikc_readline(char *out, size_t maxlen)
+int ikc_readline(BufferState *state, char *out, size_t maxlen, const char *prompt)
 {
 
-    char buf[4096];
+    char buf[4096]={0};
     int len = 0;
     int cursor = 0;
-
+    int history_active=0;
+    char original[4096]={0};
     if (maxlen > sizeof(buf))
         maxlen = sizeof(buf);
-
-    write(STDOUT_FILENO, "\r\033[k", 4);
-    write(STDOUT_FILENO, PROMPT">>> "C_RESET, strlen(PROMPT">>> " C_RESET));   
+    redraw_from_cursor(prompt, buf, len, cursor);
     while(1) {
         char c;
         if (read(STDIN_FILENO, &c, 1) != 1)
@@ -42,7 +43,7 @@ int ikc_readline(char *out, size_t maxlen)
         if (c == '\n' || c == '\r') {
             buf[len] = '\0';
             write(STDOUT_FILENO, "\n", 1);
-            strncpy(out, buf, maxlen);
+            snprintf(out, maxlen, "%s", buf);
             return len;
         }
 
@@ -55,8 +56,9 @@ int ikc_readline(char *out, size_t maxlen)
                 buf[cursor] = ' ';
                 cursor++;
                 len++;
+                history_active=0;
             }
-            redraw_from_cursor(buf, len, cursor);
+            redraw_from_cursor(prompt, buf, len, cursor);
             continue;
         }
 
@@ -76,11 +78,32 @@ int ikc_readline(char *out, size_t maxlen)
                 return -1;
             }
             switch (final) {
-                case 'A': /* up */
-                    /* ignore for now */
+                case 'A':{
+                    if(!history_active){
+                        strcpy(original, buf);
+                        history_active=1;
+                    }
+                    const char *h=history_up(&state->history);
+                    if(h){
+                        snprintf(buf, sizeof(buf), "%s", h);
+                        len=cursor=strlen(buf);
+                        redraw_from_cursor(prompt, buf, len, cursor);
+                    }
                     break;
-                case 'B': /* down */
+                }
+                case 'B':{
+                    const char *h=history_down(&state->history);
+                    if(h && *h){
+                        snprintf(buf, sizeof(buf), "%s", h);
+                        len=cursor=strlen(buf);
+                    }else{
+                        snprintf(buf, sizeof(buf), "%s", original);
+                        len=cursor=strlen(buf);
+                        history_active=0;
+                    }
+                    redraw_from_cursor(prompt, buf, len, cursor);
                     break;
+                }
                 case 'C': /* right */
                     if (cursor < len) {
                         write(STDOUT_FILENO, "\033[C", 3);
@@ -105,7 +128,8 @@ int ikc_readline(char *out, size_t maxlen)
                 cursor--;
                 len--;
                 write(STDOUT_FILENO, "\033[D", 3);
-                redraw_from_cursor(buf, len, cursor);
+                history_active=0;
+                redraw_from_cursor(prompt, buf, len, cursor);
             }
             continue;
         }
@@ -118,7 +142,8 @@ int ikc_readline(char *out, size_t maxlen)
             buf[cursor] = c;
             cursor++;
             len++;
-            redraw_from_cursor(buf, len, cursor);
+            history_active=0;
+            redraw_from_cursor(prompt, buf, len, cursor);
         }
     }
 }

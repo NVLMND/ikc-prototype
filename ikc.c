@@ -4,7 +4,7 @@
 #include<unistd.h>
 #include"state.h"
 #include"classify.h"
-#include"dyn_buf.h"
+//#include"dyn_buf.h"
 #include"compile.h"
 #include"term.h"
 #include"readline.h"
@@ -26,9 +26,11 @@ int main(void){
     char line[LINE_MAX];
 
     printf(IKC_LABEL "IKC" C_RESET "(type: "
-           CMD_MODE"'run', 'clear', 'quit'"C_RESET")\n");
+           CMD_MODE"':run', ':clear', ':quit'"C_RESET")\n");
+    fflush(stdout);
     while(1){
-        int n=ikc_readline(line, sizeof(line));
+        const char *prompt=ps.brace_depth ? "\r\033[K...     " : "\r\033[K>>> ";
+        int n=ikc_readline(&state, line, sizeof(line), prompt);
         if(n<0){
             printf("\n");
             break;
@@ -38,16 +40,18 @@ int main(void){
             case LINE_EMPTY:
                 break;
             case LINE_COMMAND:
-                if(strcmp(line, "run")==0){
+                if(strcmp(line, ":run")==0){
                     execute_code(&state);
-                }else if(strcmp(line, "clear")==0){
-                    dbuf_reset(&state.globals);
-                    dbuf_reset(&state.main_body);
+                }else if(strcmp(line, ":clear")==0){
+                    ulist_free(&state.globals);
+                    ulist_free(&state.main_body);
+                    ulist_free(&state.globals);
+                    ulist_free(&state.main_body);
                     ps.brace_depth=0;
                     printf("\r"CMD_MODE"[buffer cleared]"C_RESET "\n");
-                }else if(strcmp(line, "quit")==0){
+                }else if(strcmp(line, ":quit")==0){
                     printf("\r" C_MAGENTA "bye!"C_RESET "\n");
-                    write(STDOUT_FILENO, "\r\033[k", 4); 
+                    write(STDOUT_FILENO, "\r\033[K", 4); 
                     term_disable_raw();
                     free_state(&state);
                     return 0;
@@ -56,15 +60,23 @@ int main(void){
                 }
                 break;
             case LINE_GLOBAL:
-                //update_brace_depth(line, &brace_depth);
-                dbuf_append_line(&state.globals, line);
+            case LINE_MAIN:{
+                UnitList *target=(type == LINE_GLOBAL)
+                    ? &state.globals
+                    : &state.main_body;
+                int sel=history_get_selected(&state.history);
+                if(sel!=-1){
+                    int idx=history_get_buffer_index(&state.history, sel);
+                    ulist_replace(target, idx, line);
+                }else{
+                    ulist_add(target, line);
+                    history_add(&state.history, line, target->count -1);
+                }
                 break;
-            case LINE_MAIN:
-                //update_brace_depth(line, &brace_depth);
-                dbuf_append_line(&state.main_body, line);
-                break;
+            }
         }
         update_parser_state(line, &ps);
+        history_reset_navigation(&state.history);
     }
     free_state(&state);
     return 0;

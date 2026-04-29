@@ -33,16 +33,12 @@ int build_c_file(BufferState *s, const char *filename){
         perror("fopen");
         return-1;
     }
-
-    if(s->globals.data && s->globals.len>0){
-        fprintf(f, "%s\n", s->globals.data);
+    for(int i=0; i<s->globals.count; i++){
+        fprintf(f, "%s\n", s->globals.items[i]);
     }
     fprintf(f, "int main() {\n");
-    if(s->main_body.data && s->main_body.len>0){
-        fprintf(f, "%s", s->main_body.data);
-    }
-    if(s->main_body.len>0 && s->main_body.data[s->main_body.len-1]!='\n'){
-        fprintf(f, "\n");
+    for(int i=0; i<s->main_body.count; i++){
+        fprintf(f, "%s", s->main_body.items[i]);
     }
     fprintf(f, "return 0;\n");
     fprintf(f, "}\n");
