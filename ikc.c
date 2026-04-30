@@ -45,8 +45,9 @@ int main(void){
                 }else if(strcmp(line, ":clear")==0){
                     ulist_free(&state.globals);
                     ulist_free(&state.main_body);
-                    ulist_free(&state.globals);
-                    ulist_free(&state.main_body);
+                    ulist_init(&state.globals);
+                    ulist_init(&state.main_body);
+                    history_init(&state.history);
                     ps.brace_depth=0;
                     printf("\r"CMD_MODE"[buffer cleared]"C_RESET "\n");
                 }else if(strcmp(line, ":quit")==0){
