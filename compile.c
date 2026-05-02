@@ -5,6 +5,7 @@
 #include<unistd.h>
 #include"state.h"
 #include"colors.h"
+#include"compile.h"
 static char *find_path(const char *cmd){
     char *path = getenv("PATH");
     if (!path) return NULL;
@@ -27,6 +28,12 @@ static char *find_path(const char *cmd){
     return NULL;
 }
 
+void free_compiler_path(Compiler *c){
+    for(int i=0; i<2; i++){
+        free(c[i].path);
+        c[i].path=NULL;
+    }
+}
 int build_c_file(BufferState *s, const char *filename){
     FILE *f=fopen(filename, "w");
     if(!f){
@@ -72,7 +79,7 @@ int run_binary(void){
     return run_process("./temp.out", args);
 }
 
-static int run_with_tcc(const char *file){
+/*static int run_with_tcc(const char *file){
     char *path=find_path("tcc");
     if(!path) return -1;
     char *args[]={
@@ -85,8 +92,8 @@ static int run_with_tcc(const char *file){
     free(path);
     return ret;
 }
-
-static int run_with_gcc(const char *file){
+*/
+/*static int run_with_gcc(const char *file){
     char *path=find_path("gcc");
     if(!path) return -1;
 
@@ -115,22 +122,52 @@ static int run_with_gcc(const char *file){
     }
     free(path);
     return run_binary();
+}*/
+char *compiler_path(const char *cmd){
+    return find_path(cmd);
 }
 
-int execute_code(BufferState *s){
+int run_with_compiler(Compiler *c, const char *file){
+    if(strcmp(c->name, "tcc")==0){
+        char *args[]={
+            "tcc",
+            "-run",
+            (char *)file,
+            NULL
+        };
+        int ret=run_process(c->path, args);
+        return ret;
+
+    }else if(strcmp(c->name, "gcc")==0){
+        char *compile_args[]={
+            c->path,
+            "-c",
+            (char *)file,
+            "-o",
+            "temp.o",
+            NULL
+        };
+        if(run_process(c->path, compile_args)!=0){
+            return -1;
+        }
+        char *link_args[]={
+            c->path,
+            "temp.o",
+            "-o",
+            "temp.out",
+            NULL
+        };
+        if(run_process(c->path, link_args)!=0){
+            return -1;
+        }
+        return run_binary();
+        }
+    return -1;
+}
+
+int execute_code(BufferState *s, Compiler *c){
     if(build_c_file(s, "temp.c")!=0) return -1;
     write(STDOUT_FILENO, "\r", 1);
-    if(run_with_tcc("temp.c")==0){
-        //write(STDOUT_FILENO, "\r", 1);
-        printf("\r" C_GREEN"[ran with tcc]"C_RESET "\n");
-        return 0;
-    }
-    printf("\r" C_YELLOW"[tcc failed or not found, using gcc]"C_RESET "\n");
-
-    if(run_with_gcc("temp.c")==0){
-        printf("\r[ran with gcc]\n");
-        return 0;
-    }
-    printf("\r" IKC_ERROR"[no working compiler found]"C_RESET "\n");
-    return -1;
+    run_with_compiler(c, "temp.c");
+    return 0;
 }
